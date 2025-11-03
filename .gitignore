@@ -1,0 +1,24 @@
+# macOS
+.DS_Store
+
+# Node
+node_modules
+pnpm-lock.yaml
+yarn.lock
+
+# Ruby/Bundler
+.bundle
+vendor/bundle
+
+# Logs
+*.log
+log/
+tmp/
+
+# IDEs
+.vscode/
+.idea/
+
+# Misc
+.env*
+.envrc

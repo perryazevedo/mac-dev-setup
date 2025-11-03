@@ -1,0 +1,11 @@
+[user]
+	name = Your Name
+	email = you@example.com
+[init]
+	defaultBranch = main
+[pull]
+	rebase = false
+[commit]
+	gpgsign = true
+[gpg]
+	program = gpg

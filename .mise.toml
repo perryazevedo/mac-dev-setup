@@ -1,0 +1,12 @@
+[tools]
+ruby = "3.3.4"
+node = "lts"
+bun = "latest"
+java = "17"
+
+[env]
+RAILS_ENV = "development"
+
+[tasks]
+setup = "bundle install && pnpm install"
+dev   = "bin/dev"
