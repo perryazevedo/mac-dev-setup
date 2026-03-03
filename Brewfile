@@ -47,8 +47,11 @@ brew "colima"           # optional alternative to Docker Desktop
 cask "ghostty"          # GPU-accelerated terminal emulator
 cask "orbstack"         # fast Docker on macOS (preferred)
 cask "android-studio"   # Android SDK/AVD/JDK mgmt
+cask "chatgpt"          # ChatGPT AI assistant
 cask "claude"           # Claude AI assistant
+cask "conductor"        # Claude code parallelization
 cask "cursor"           # primary editor w/ AI
+cask "figma"            # collaborative design tool
 cask "visual-studio-code" # secondary editor / ecosystem fallback
 cask "zed"              # ultra-fast minimal editor
 cask "tableplus"        # DB GUI
@@ -56,3 +59,10 @@ cask "tableplus"        # DB GUI
 
 # --- Fonts ---
 cask "font-meslo-lg-nerd-font"  # Nerd Font for Starship/Ghostty icons
+
+# --- Personal Apps (optional, uncomment as needed) ---
+# cask "affinity"       # design / photo editing suite
+# cask "proton-pass"    # password manager
+# cask "protonvpn"      # VPN client
+# cask "proton-drive"   # cloud storage
+# cask "signal"         # encrypted messaging
