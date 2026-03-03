@@ -47,7 +47,10 @@ brew services start redis
 - React Native helpers: **watchman**, **cocoapods**; **Android Studio** via cask.
 - Container runtime: **OrbStack** (preferred) or **Colima**.
 - CLIs: `ripgrep`, `fd`, `fzf`, `zoxide`, `eza`, `jq`, `yq`, `tree`.
-- Prompt: **starship**.
+- Terminal: **Ghostty** (GPU-accelerated) with **MesloLGS Nerd Font Mono**.
+- Prompt: **Starship** with sensible defaults (`configs/starship.toml`).
+- Zsh plugins: **zsh-autosuggestions**, **zsh-syntax-highlighting**.
+- Shell aliases: `ls`/`ll`/`la` → **eza** with icons; smart `cd` via **zoxide** (`z`).
 - Editors: **Cursor**, **VS Code**, **Zed**.
 - DB GUI: **TablePlus** (and optional Postico).
 
@@ -55,20 +58,44 @@ brew services start redis
 
 ## Terminal Compatibility
 
-This setup works across **Terminal**, **iTerm2**, and **Warp** on macOS. The bootstrap script configures:
+This setup works across **Ghostty**, **Terminal**, **iTerm2**, and **Warp** on macOS. The bootstrap script configures:
 
 - **Homebrew**: Added to both `~/.zprofile` (login shells) and `~/.zshrc` (non-login shells) for maximum compatibility
 - **Mise**: Activated in `~/.zshrc` to manage runtimes
 - **Starship**: Initialized in `~/.zshrc` as your prompt
+- **Zoxide**: Initialized in `~/.zshrc` for smart directory jumping (`z`)
+- **eza aliases**: `ls`, `ll`, `la` with icons
+- **Zsh plugins**: autosuggestions and syntax highlighting
 - **fzf**: Key bindings and completion installed automatically
+
+### Ghostty (recommended)
+
+**Ghostty** is a GPU-accelerated terminal emulator installed via the Brewfile. The bootstrap script copies `configs/ghostty/config` to `~/.config/ghostty/config` if no config exists yet.
+
+The default Ghostty config sets:
+- **Font**: MesloLGS Nerd Font Mono (installed via `font-meslo-lg-nerd-font`)
+- **Theme**: Argonaut (run `ghostty +list-themes` to browse alternatives)
+- **Background opacity**: 85%
+
+A SSH TERM fix is added to `~/.zshrc` so remote servers that don't recognise `xterm-ghostty` fall back to `xterm-256color`.
+
+### Starship Config
+
+The bootstrap script copies `configs/starship.toml` to `~/.config/starship.toml` if no config exists yet. It includes shorter directory paths, command duration display, and Git status styling.
+
+To use a preset instead, run:
+
+```bash
+starship preset tokyo-night -o ~/.config/starship.toml
+```
 
 ### Warp-Specific Notes
 
 If using **Warp**, you may want to:
 1. Enable custom prompt: **Settings** → **Features** → **Session** → Enable "Honor user's custom prompt"
-2. Install a Nerd Font (optional, for Starship icons): Starship displays best with a [Nerd Font](https://www.nerdfonts.com/). Popular choices: Fira Code, JetBrains Mono, or Meslo.
+2. The Nerd Font (`font-meslo-lg-nerd-font`) is installed automatically via the Brewfile.
 
-All other terminal apps work out of the box - just start a new terminal session after running the bootstrap script.
+All other terminal apps work out of the box -- just start a new terminal session after running the bootstrap script.
 
 ---
 

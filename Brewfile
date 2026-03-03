@@ -18,6 +18,10 @@ brew "pinentry-mac"
 # Shell prompt
 brew "starship"
 
+# Zsh plugins
+brew "zsh-autosuggestions"
+brew "zsh-syntax-highlighting"
+
 # React Native / iOS helpers
 brew "watchman"
 brew "cocoapods"
@@ -40,6 +44,7 @@ brew "redis"
 brew "colima"           # optional alternative to Docker Desktop
 
 # --- GUI Apps (Casks) ---
+cask "ghostty"          # GPU-accelerated terminal emulator
 cask "orbstack"         # fast Docker on macOS (preferred)
 cask "android-studio"   # Android SDK/AVD/JDK mgmt
 cask "cursor"           # primary editor w/ AI
@@ -47,3 +52,6 @@ cask "visual-studio-code" # secondary editor / ecosystem fallback
 cask "zed"              # ultra-fast minimal editor
 cask "tableplus"        # DB GUI
 # cask "postico"        # (optional) Postgres GUI, if you prefer Postico
+
+# --- Fonts ---
+cask "font-meslo-lg-nerd-font"  # Nerd Font for Starship/Ghostty icons

@@ -1,0 +1,17 @@
+# Starship configuration
+# Applied by bootstrap.sh if ~/.config/starship.toml doesn't already exist.
+# To use a preset instead, run: starship preset tokyo-night -o ~/.config/starship.toml
+
+command_timeout = 1000
+
+[directory]
+truncation_length = 3
+truncate_to_repo = true
+
+[cmd_duration]
+min_time = 500
+format = "took [$duration]($style) "
+style = "yellow bold"
+
+[git_status]
+style = "bold purple"
