@@ -47,6 +47,7 @@ brew "colima"           # optional alternative to Docker Desktop
 cask "ghostty"          # GPU-accelerated terminal emulator
 cask "orbstack"         # fast Docker on macOS (preferred)
 cask "android-studio"   # Android SDK/AVD/JDK mgmt
+cask "claude"           # Claude AI assistant
 cask "cursor"           # primary editor w/ AI
 cask "visual-studio-code" # secondary editor / ecosystem fallback
 cask "zed"              # ultra-fast minimal editor

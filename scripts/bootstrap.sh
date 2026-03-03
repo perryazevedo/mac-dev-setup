@@ -72,6 +72,15 @@ fi
 # fzf key-bindings/completion
 "$(brew --prefix)"/opt/fzf/install --key-bindings --completion --no-update-rc || echo "fzf optional installer skipped (non-fatal)"
 
+# Claude Code CLI (native installer, auto-updates)
+if ! command -v claude >/dev/null 2>&1; then
+  curl -fsSL https://claude.ai/install.sh | bash
+fi
+
+# Cursor CLI (open files/folders with `cursor .`)
+grep -q 'Cursor.app/Contents/Resources/app/bin' ~/.zshrc 2>/dev/null || \
+  echo 'export PATH="/Applications/Cursor.app/Contents/Resources/app/bin:$PATH"' >> ~/.zshrc
+
 # Trust mise config in this repo (if it exists)
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 if [ -f "$REPO_ROOT/.mise.toml" ] && command -v mise >/dev/null 2>&1; then

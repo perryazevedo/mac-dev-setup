@@ -51,7 +51,8 @@ brew services start redis
 - Prompt: **Starship** with sensible defaults (`configs/starship.toml`).
 - Zsh plugins: **zsh-autosuggestions**, **zsh-syntax-highlighting**.
 - Shell aliases: `ls`/`ll`/`la` → **eza** with icons; smart `cd` via **zoxide** (`z`).
-- Editors: **Cursor**, **VS Code**, **Zed**.
+- AI: **Claude** desktop app; **Claude Code** CLI (auto-updating native installer).
+- Editors: **Cursor** (with `cursor` shell command), **VS Code**, **Zed**.
 - DB GUI: **TablePlus** (and optional Postico).
 
 ---
