@@ -28,7 +28,7 @@ brew update
 # Install mise + common shells tools fast (rest via Brewfile)
 # Install a minimal set early so the rest of the setup is comfortable.
 # Note: These also appear in the Brewfile; duplication is intentional for bootstrapping speed.
-brew install mise git ripgrep fd fzf zoxide eza jq yq tree gnupg pinentry-mac starship
+brew install mise git ripgrep fd fzf zoxide eza jq yq tree gnupg pinentry-mac starship zsh-autosuggestions zsh-syntax-highlighting
 
 # One-time shell hooks (idempotent)
 # Ensure .zshrc exists
@@ -54,9 +54,9 @@ grep -q 'alias ls="eza' ~/.zshrc 2>/dev/null || {
 
 # Zsh plugins (autosuggestions & syntax highlighting)
 grep -q 'zsh-autosuggestions.zsh' ~/.zshrc 2>/dev/null || \
-  echo 'source $(brew --prefix)/share/zsh-autosuggestions/zsh-autosuggestions.zsh' >> ~/.zshrc
+  echo '[ -f "$(brew --prefix)/share/zsh-autosuggestions/zsh-autosuggestions.zsh" ] && source "$(brew --prefix)/share/zsh-autosuggestions/zsh-autosuggestions.zsh"' >> ~/.zshrc
 grep -q 'zsh-syntax-highlighting.zsh' ~/.zshrc 2>/dev/null || \
-  echo 'source $(brew --prefix)/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh' >> ~/.zshrc
+  echo '[ -f "$(brew --prefix)/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ] && source "$(brew --prefix)/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"' >> ~/.zshrc
 
 # Ghostty SSH TERM fix (some servers don't recognise xterm-ghostty)
 if ! grep -q 'SSH_CONNECTION.*TERM=xterm-256color' ~/.zshrc 2>/dev/null; then
