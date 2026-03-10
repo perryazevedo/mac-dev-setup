@@ -59,7 +59,7 @@ grep -q 'zsh-syntax-highlighting.zsh' ~/.zshrc 2>/dev/null || \
   echo '[ -f "$(brew --prefix)/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ] && source "$(brew --prefix)/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"' >> ~/.zshrc
 
 # Ghostty SSH TERM fix (some servers don't recognise xterm-ghostty)
-if ! grep -q 'SSH_CONNECTION.*TERM=xterm-256color' ~/.zshrc 2>/dev/null; then
+if ! grep -q 'Fix TERM for SSH sessions' ~/.zshrc 2>/dev/null; then
   cat >> ~/.zshrc <<'TERMFIX'
 
 # Fix TERM for SSH sessions under Ghostty
@@ -80,6 +80,27 @@ fi
 # Cursor CLI (open files/folders with `cursor .`)
 grep -q 'Cursor.app/Contents/Resources/app/bin' ~/.zshrc 2>/dev/null || \
   echo 'export PATH="/Applications/Cursor.app/Contents/Resources/app/bin:$PATH"' >> ~/.zshrc
+
+# ~/.local/bin (Claude Code and other user-local binaries)
+grep -q 'HOME/\.local/bin' ~/.zshrc 2>/dev/null || \
+  echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+
+# Case-insensitive tab completion
+grep -q 'NO_CASE_GLOB' ~/.zshrc 2>/dev/null || {
+  echo '' >> ~/.zshrc
+  echo '# Case-insensitive completion' >> ~/.zshrc
+  echo 'setopt NO_CASE_GLOB' >> ~/.zshrc
+  echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
+  echo "zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-zA-Z}'" >> ~/.zshrc
+}
+
+# History search with arrow keys
+grep -q 'history-beginning-search-backward' ~/.zshrc 2>/dev/null || {
+  echo '' >> ~/.zshrc
+  echo '# History search with arrow keys' >> ~/.zshrc
+  echo "bindkey '^[[A' history-beginning-search-backward" >> ~/.zshrc
+  echo "bindkey '^[[B' history-beginning-search-forward" >> ~/.zshrc
+}
 
 # Trust mise config in this repo (if it exists)
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
