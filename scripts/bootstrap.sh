@@ -183,26 +183,49 @@ fi
 echo ">> Installing Brewfile packages (idempotent)…"
 brew bundle --file="$REPO_ROOT/Brewfile"
 
-# Optional: strip default Dock *app* shortcuts (left of the divider) and hide recents.
-# persistent-apps = pinned apps; persistent-others = Downloads etc.; Trash is system-managed.
-# Running apps still appear while open and leave when quit. Finder stays.
+# Optional macOS Dock prefs. Restart Dock once if anything changed.
+# Hot corner values: 2=Mission Control, 4=Desktop, 5=Start Screen Saver. Modifier 0 = none.
+dock_restart=0
 if [[ -t 0 ]]; then
   echo
   echo ">> New Macs pin Safari, Mail, Messages, and other apps on the left side of the Dock,"
   echo ">> and may show suggested/recent apps even when they are not open."
-  read -r -p ">> Clear pinned Dock apps and hide recents? (keeps Downloads and Trash) [y/N] " dock_reply || dock_reply=""
+  read -r -p ">> Clear pinned Dock apps and hide recents? (keeps Downloads and Trash) [Y/n] " dock_reply || dock_reply=""
   case "$dock_reply" in
-    [yY]|[yY][eE][sS])
+    [nN]|[nN][oO])
+      echo ">> Leaving Dock as-is"
+      ;;
+    *)
       defaults write com.apple.dock persistent-apps -array
       defaults write com.apple.dock recent-apps -array
       defaults write com.apple.dock show-recents -bool false
-      killall Dock 2>/dev/null || true
+      dock_restart=1
       echo ">> Dock app shortcuts cleared; suggested/recent apps hidden"
       ;;
+  esac
+
+  echo
+  echo ">> Hot Corners: top-left Screen Saver, top-right Desktop, bottom-right Mission Control."
+  echo ">> Bottom-left is left unchanged. Open apps still appear in the Dock while running."
+  read -r -p ">> Apply those Hot Corners? [Y/n] " corners_reply || corners_reply=""
+  case "$corners_reply" in
+    [nN]|[nN][oO])
+      echo ">> Leaving Hot Corners as-is"
+      ;;
     *)
-      echo ">> Leaving Dock as-is"
+      defaults write com.apple.dock wvous-tl-corner -int 5
+      defaults write com.apple.dock wvous-tl-modifier -int 0
+      defaults write com.apple.dock wvous-tr-corner -int 4
+      defaults write com.apple.dock wvous-tr-modifier -int 0
+      defaults write com.apple.dock wvous-br-corner -int 2
+      defaults write com.apple.dock wvous-br-modifier -int 0
+      dock_restart=1
+      echo ">> Hot Corners set"
       ;;
   esac
+fi
+if [[ "$dock_restart" -eq 1 ]]; then
+  killall Dock 2>/dev/null || true
 fi
 
 echo ">> Bootstrap complete."
