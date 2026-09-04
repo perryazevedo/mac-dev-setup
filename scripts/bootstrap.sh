@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Proton Drive CLI has no unversioned latest URL; bump this when Proton ships a new binary.
+PROTON_DRIVE_CLI_VERSION="0.8.0"
+
+has_cmd() {
+  command -v "$1" >/dev/null 2>&1 || [[ -x "$HOME/.local/bin/$1" ]] || [[ -x "$HOME/.grok/bin/$1" ]]
+}
+
 # Ensure Xcode Command Line Tools
 if ! xcode-select -p >/dev/null 2>&1; then
   xcode-select --install || true
@@ -14,7 +23,7 @@ if ! command -v brew >/dev/null 2>&1; then
   eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
 
-# Ensure Homebrew is available in .zshrc (for non-login shells like iTerm/Warp)
+# Ensure Homebrew is available in .zshrc (for non-login shells like iTerm)
 # This ensures brew works in all terminal contexts
 if ! grep -q 'brew shellenv' ~/.zshrc 2>/dev/null; then
   echo '' >> ~/.zshrc
@@ -25,10 +34,10 @@ fi
 # Core packages needed early
 brew update
 
-# Install mise + common shells tools fast (rest via Brewfile)
+# Install mise + common shell tools fast (rest via Brewfile)
 # Install a minimal set early so the rest of the setup is comfortable.
 # Note: These also appear in the Brewfile; duplication is intentional for bootstrapping speed.
-brew install mise git ripgrep fd fzf zoxide eza jq yq tree gnupg pinentry-mac starship zsh-autosuggestions zsh-syntax-highlighting
+brew install mise git gh ripgrep fd fzf zoxide eza jq yq tree gnupg pinentry-mac starship zsh-autosuggestions zsh-syntax-highlighting
 
 # One-time shell hooks (idempotent)
 # Ensure .zshrc exists
@@ -72,18 +81,60 @@ fi
 # fzf key-bindings/completion
 "$(brew --prefix)"/opt/fzf/install --key-bindings --completion --no-update-rc || echo "fzf optional installer skipped (non-fatal)"
 
-# Claude Code CLI (native installer, auto-updates)
-if ! command -v claude >/dev/null 2>&1; then
-  curl -fsSL https://claude.ai/install.sh | bash
-fi
-
-# Cursor CLI (open files/folders with `cursor .`)
+# Cursor editor shim (open files/folders with `cursor .`)
+# brew cask "cursor" also links this; keep the app path as a fallback.
 grep -q 'Cursor.app/Contents/Resources/app/bin' ~/.zshrc 2>/dev/null || \
   echo 'export PATH="/Applications/Cursor.app/Contents/Resources/app/bin:$PATH"' >> ~/.zshrc
 
-# ~/.local/bin (Claude Code and other user-local binaries)
+# ~/.local/bin (Claude Code, Origin, pass-cli, proton-drive, and other user-local binaries)
+mkdir -p "$HOME/.local/bin"
 grep -q 'HOME/\.local/bin' ~/.zshrc 2>/dev/null || \
   echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+export PATH="$HOME/.local/bin:$PATH"
+
+# Default editor for git commit etc.
+grep -q '^export EDITOR=' ~/.zshrc 2>/dev/null || \
+  echo 'export EDITOR="cursor --wait"' >> ~/.zshrc
+
+# --- Native auto-updating CLIs ---
+
+# Claude Code CLI
+if ! has_cmd claude; then
+  curl -fsSL https://claude.ai/install.sh | bash
+fi
+
+# Grok Build CLI
+if ! has_cmd grok; then
+  curl -fsSL https://x.ai/cli/install.sh | bash
+fi
+# The Grok installer usually appends its own PATH/completions block.
+# Only add ~/.grok/bin if that block is missing.
+if ! grep -q '\.grok/bin' ~/.zshrc 2>/dev/null; then
+  echo 'export PATH="$HOME/.grok/bin:$PATH"' >> ~/.zshrc
+fi
+export PATH="$HOME/.grok/bin:$PATH"
+
+# Cursor Origin CLI (git forge; separate from cursor / cursor-agent)
+if ! has_cmd origin; then
+  curl -fsSL https://downloads.cursor.com/origin/install.sh | sh
+fi
+
+# Proton Pass CLI
+if ! has_cmd pass-cli; then
+  curl -fsSL https://proton.me/download/pass-cli/install.sh | bash
+fi
+
+# Proton Drive CLI (versioned binary; skip without failing bootstrap if the URL 404s)
+if ! has_cmd proton-drive; then
+  if curl -fsSL "https://proton.me/download/drive/cli/${PROTON_DRIVE_CLI_VERSION}/darwin-arm64/proton-drive" \
+      -o "$HOME/.local/bin/proton-drive"; then
+    chmod +x "$HOME/.local/bin/proton-drive"
+    echo ">> Installed Proton Drive CLI ${PROTON_DRIVE_CLI_VERSION} → ~/.local/bin/proton-drive"
+  else
+    echo ">> Warning: Proton Drive CLI download failed (version ${PROTON_DRIVE_CLI_VERSION}); skipping"
+    rm -f "$HOME/.local/bin/proton-drive"
+  fi
+fi
 
 # Case-insensitive tab completion
 grep -q 'NO_CASE_GLOB' ~/.zshrc 2>/dev/null || {
@@ -103,9 +154,9 @@ grep -q 'history-beginning-search-backward' ~/.zshrc 2>/dev/null || {
 }
 
 # Trust mise config in this repo (if it exists)
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 if [ -f "$REPO_ROOT/.mise.toml" ] && command -v mise >/dev/null 2>&1; then
-  cd "$REPO_ROOT" && mise trust . 2>/dev/null && echo ">> Trusted mise config file" || echo ">> Note: Run 'mise trust' in the repo directory if needed"
+  (cd "$REPO_ROOT" && mise trust . 2>/dev/null && echo ">> Trusted mise config file") \
+    || echo ">> Note: Run 'mise trust' in the repo directory if needed"
 fi
 
 # --- Config files (copy from repo if not already present) ---
@@ -128,12 +179,21 @@ else
   echo ">> Starship config already exists, skipping"
 fi
 
-echo ">> Bootstrap base complete. Next steps:"
-echo "   1) brew bundle --file=./Brewfile"
-echo "   2) mise use -g ruby@latest"
-echo "   3) mise use -g node@lts && mise use -g bun@latest && corepack enable"
-echo "   4) brew services start postgresql@16 && brew services start redis"
+# Remaining formulae and casks
+echo ">> Installing Brewfile packages (idempotent)…"
+brew bundle --file="$REPO_ROOT/Brewfile"
 
+echo ">> Bootstrap complete."
+echo "   Start a new terminal (or run \`exec zsh\`), then:"
+echo "   1) gh auth login && gh auth setup-git"
+echo "   2) origin auth login"
+echo "   3) pass-cli login"
+echo "   4) proton-drive auth login"
+echo "   5) claude / grok / codex  (browser login on first launch)"
+echo "   6) mise use -g ruby@latest"
+echo "   7) mise use -g node@lts && mise use -g bun@latest && corepack enable"
+echo "   8) brew services start postgresql@16 && brew services start redis"
+echo "   Drift check later: ./scripts/doctor.sh"
 
 # React Native: Add Android tools to PATH
 # After installing Android Studio and SDK, add this to your ~/.zshrc or ~/.zprofile:

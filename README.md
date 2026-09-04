@@ -17,11 +17,15 @@ xcode-select --install || true
 git clone https://your.git.host/you/mac-dev-setup.git
 cd mac-dev-setup
 ./scripts/bootstrap.sh
-# Note: Bootstrap automatically sets up shell hooks (mise, starship, fzf) and trusts the mise config
-# After bootstrap, start a new terminal session (or run `exec zsh`) for tools to be available
+# Bootstrap installs Homebrew packages (Brewfile), shell hooks, and native CLIs.
+# After bootstrap, start a new terminal session (or run `exec zsh`) for tools to be available.
 
-# 2) Install apps & CLIs with Brewfile
-brew bundle --file=./Brewfile
+# 2) Sign in to CLIs (browser flows)
+gh auth login && gh auth setup-git
+origin auth login
+pass-cli login
+proton-drive auth login
+# claude / grok / codex prompt on first launch
 
 # 3) Provision runtimes (user-global defaults)
 mise use -g ruby@latest
@@ -36,6 +40,8 @@ brew services start redis
 
 > Optional: Install **OrbStack** (via cask in `Brewfile`) and use it for Docker; or use **Colima** (installed via brew).
 
+On a machine that was set up before this repo was updated, run `./scripts/doctor.sh` to see what is missing.
+
 ---
 
 ## What you get
@@ -46,20 +52,36 @@ brew services start redis
 - Databases: **PostgreSQL 16**, **Redis**.
 - React Native helpers: **watchman**, **cocoapods**; **Android Studio** via cask.
 - Container runtime: **OrbStack** (preferred) or **Colima**.
-- CLIs: `ripgrep`, `fd`, `fzf`, `zoxide`, `eza`, `jq`, `yq`, `tree`.
-- Terminal: **Ghostty** (GPU-accelerated) with **MesloLGS Nerd Font Mono**.
+- CLIs: `ripgrep`, `fd`, `fzf`, `zoxide`, `eza`, `jq`, `yq`, `tree`, `gh`.
+- Terminal: **Ghostty** (GPU-accelerated) with **MesloLGS Nerd Font Mono**. Terminal.app and iTerm2 still work.
 - Prompt: **Starship** with sensible defaults (`configs/starship.toml`).
 - Zsh plugins: **zsh-autosuggestions**, **zsh-syntax-highlighting**.
 - Shell aliases: `ls`/`ll`/`la` → **eza** with icons; smart `cd` via **zoxide** (`z`).
-- AI: **Claude** desktop app; **Claude Code** CLI (auto-updating native installer).
 - Editors: **Cursor** (with `cursor` shell command), **VS Code**, **Zed**.
 - DB GUI: **TablePlus** (and optional Postico).
+- Issue tracker: **Linear**.
+
+### AI / git / secrets CLIs
+
+| Binary | What it is | How it is installed |
+| --- | --- | --- |
+| `gh` | GitHub CLI | Homebrew (`Brewfile` + bootstrap early install) |
+| `claude` | Claude Code | Native installer (auto-updates) |
+| `grok` | Grok Build | Native installer (auto-updates) |
+| `cursor` | Open files/folders in Cursor | `cask "cursor"` |
+| `cursor-agent` | Cursor terminal coding agent | `cask "cursor-cli"` |
+| `origin` | Cursor Origin git forge | Native installer (auto-updates) |
+| `codex` | OpenAI Codex CLI | `cask "codex"` |
+| `pass-cli` | Proton Pass (secrets, SSH agent) | Native installer (auto-updates) |
+| `proton-drive` | Proton Drive filesystem CLI | Versioned official binary |
+
+Matching desktop apps: **Claude**, **ChatGPT**, **Grok Bot**, **Cursor**.
 
 ---
 
 ## Terminal Compatibility
 
-This setup works across **Ghostty**, **Terminal**, **iTerm2**, and **Warp** on macOS. The bootstrap script configures:
+This setup works across **Ghostty**, **Terminal.app**, and **iTerm2** on macOS. The bootstrap script configures:
 
 - **Homebrew**: Added to both `~/.zprofile` (login shells) and `~/.zshrc` (non-login shells) for maximum compatibility
 - **Mise**: Activated in `~/.zshrc` to manage runtimes
@@ -90,13 +112,52 @@ To use a preset instead, run:
 starship preset tokyo-night -o ~/.config/starship.toml
 ```
 
-### Warp-Specific Notes
+---
 
-If using **Warp**, you may want to:
-1. Enable custom prompt: **Settings** → **Features** → **Session** → Enable "Honor user's custom prompt"
-2. The Nerd Font (`font-meslo-lg-nerd-font`) is installed automatically via the Brewfile.
+## AI coding agents
 
-All other terminal apps work out of the box -- just start a new terminal session after running the bootstrap script.
+Bootstrap installs the CLIs. Each one signs in on first launch (browser).
+
+```bash
+claude          # Claude Code TUI
+grok            # Grok Build TUI
+cursor-agent    # Cursor's terminal agent
+codex           # OpenAI Codex
+```
+
+**`agent` name collision:** Grok's installer also ships a binary named `agent`. This setup treats `agent` as Grok. Invoke Cursor's terminal agent as `cursor-agent`, not `agent`.
+
+### Origin (Cursor git forge)
+
+Origin is Cursor's git host. It is **not** a replacement for GitHub or `gh`.
+
+```bash
+origin auth login
+origin repo create my-project
+git remote add origin https://origin.cursor.com/{owner}/{repo}.git
+```
+
+`origin auth login` also installs Origin's git credential helper so `git push` / `git pull` against Origin remotes work.
+
+---
+
+## Proton
+
+`pass-cli` and `proton-drive` are installed by bootstrap. Desktop apps (Pass, Drive, Mail, VPN) stay commented in the Brewfile — uncomment if you want them provisioned automatically.
+
+```bash
+pass-cli login
+pass-cli run -- my-command          # inject secrets as env vars
+# Secret references: pass://vault/item/field
+pass-cli ssh-agent                  # use SSH keys stored in Proton Pass
+
+proton-drive auth login             # session stored in macOS Keychain
+proton-drive filesystem list /
+```
+
+`pass-cli` is installed with Proton's native installer so `pass-cli update` works. Do not also `brew install proton-pass-cli`.
+
+The Proton Drive CLI is a versioned binary (`PROTON_DRIVE_CLI_VERSION` in `scripts/bootstrap.sh`). Bump that variable when Proton publishes a new release at [proton.me/download/drive/cli](https://proton.me/download/drive/cli/index.html).
 
 ---
 
@@ -126,7 +187,9 @@ Ensure you've installed **Xcode** (full app) from the App Store and opened it on
 
 ---
 
-## Git & GPG (optional)
+## Git, GitHub, and GPG
+
+`gh` is the GitHub CLI (Homebrew). Sign in after bootstrap:
 
 ```bash
 git config --global init.defaultBranch main
@@ -134,11 +197,13 @@ git config --global pull.rebase false
 git config --global commit.gpgsign true
 git config --global gpg.program $(which gpg)
 
-# Authenticate with GitHub
 gh auth login
+gh auth setup-git
 ```
 
-If you use 1Password’s SSH/GPG agent, follow 1Password docs and skip `gpg` key generation here.
+If you use 1Password’s SSH/GPG agent, follow 1Password docs and skip `gpg` key generation here. A `1password` / `1password-cli` pair is commented in the Brewfile.
+
+Copy `.gitconfig.sample` to `~/.gitconfig` and fill in your name/email if you are starting from scratch.
 
 ---
 
@@ -169,10 +234,11 @@ When you `cd` into a repo with `.mise.toml`, Mise activates the pinned versions 
 
 1. Install Xcode CLT: `xcode-select --install`
 2. Clone this repo.
-3. Run `./scripts/bootstrap.sh` (automatically sets up shell hooks and trusts mise config)
-4. `brew bundle --file=./Brewfile`
+3. Run `./scripts/bootstrap.sh` (shell hooks, native CLIs, and `brew bundle`)
+4. Sign in: `gh auth login && gh auth setup-git`, `origin auth login`, `pass-cli login`, `proton-drive auth login`
 5. Provision runtimes: `mise use -g ruby@latest && mise use -g node@lts && mise use -g bun@latest && corepack enable`
 6. Start services: `brew services start postgresql@16 && brew services start redis`
+7. Optional: `./scripts/doctor.sh` to confirm everything landed
 
 ---
 
@@ -185,6 +251,9 @@ When you `cd` into a repo with `.mise.toml`, Mise activates the pinned versions 
 - **Mise config not trusted**: The bootstrap script should handle this automatically. If you see trust errors, run `mise trust` in the repo directory.
 - **`command not found: corepack` or tools not available**: After running bootstrap, start a new terminal session (or run `exec zsh`) so that mise and other tools are activated. The bootstrap script adds hooks to `~/.zshrc`, but they only load in new shells.
 - **Homebrew not found in terminal**: The setup adds Homebrew to both `~/.zprofile` and `~/.zshrc` for compatibility. If `brew` isn't available, try starting a new terminal or running `eval "$(/opt/homebrew/bin/brew shellenv)"` manually.
+- **`command not found: origin` / `pass-cli` / `claude`**: Ensure `~/.local/bin` is on your PATH (`export PATH="$HOME/.local/bin:$PATH"`).
+- **`command not found: grok`**: Ensure `~/.grok/bin` is on your PATH. The Grok installer usually adds this itself.
+- **`agent` opens Grok instead of Cursor**: That is expected. Use `cursor-agent` for Cursor's terminal agent.
 
 ---
 

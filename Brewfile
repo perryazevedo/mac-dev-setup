@@ -49,8 +49,11 @@ cask "orbstack"         # fast Docker on macOS (preferred)
 cask "android-studio"   # Android SDK/AVD/JDK mgmt
 cask "chatgpt"          # ChatGPT AI assistant
 cask "claude"           # Claude AI assistant
-cask "conductor"        # Claude code parallelization
 cask "cursor"           # primary editor w/ AI
+cask "cursor-cli"       # cursor-agent (terminal agent; not the editor)
+cask "grok-bot"         # Grok Bot desktop
+cask "codex"            # OpenAI Codex CLI
+cask "linear"           # issue tracker
 cask "figma"            # collaborative design tool
 cask "visual-studio-code" # secondary editor / ecosystem fallback
 cask "zed"              # ultra-fast minimal editor
@@ -61,8 +64,15 @@ cask "tableplus"        # DB GUI
 cask "font-meslo-lg-nerd-font"  # Nerd Font for Starship/Ghostty icons
 
 # --- Personal Apps (optional, uncomment as needed) ---
-# cask "affinity"       # design / photo editing suite
-# cask "proton-pass"    # password manager
-# cask "protonvpn"      # VPN client
-# cask "proton-drive"   # cloud storage
-# cask "signal"         # encrypted messaging
+# cask "affinity"            # design / photo editing suite
+# cask "1password"           # password manager
+# cask "1password-cli"       # 1Password CLI (`op`)
+# cask "proton-pass"         # password manager
+# cask "protonvpn"           # VPN client
+# cask "proton-drive"        # cloud storage
+# cask "proton-mail"         # Mail + Calendar
+# cask "proton-mail-bridge"  # IMAP/SMTP bridge for Mail.app
+# cask "slack"
+# cask "notion"
+# cask "iterm2"              # Terminal.app alternative (Ghostty is the default)
+# cask "signal"              # encrypted messaging
