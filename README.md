@@ -19,6 +19,7 @@ cd mac-dev-setup
 ./scripts/bootstrap.sh
 # Bootstrap installs Homebrew packages (Brewfile), shell hooks, and native CLIs.
 # After bootstrap, start a new terminal session (or run `exec zsh`) for tools to be available.
+# You will be asked whether to clear pinned Dock apps and hide recents (default: no).
 
 # 2) Sign in to CLIs (browser flows)
 gh auth login && gh auth setup-git
@@ -234,7 +235,7 @@ When you `cd` into a repo with `.mise.toml`, Mise activates the pinned versions 
 
 1. Install Xcode CLT: `xcode-select --install`
 2. Clone this repo.
-3. Run `./scripts/bootstrap.sh` (shell hooks, native CLIs, and `brew bundle`)
+3. Run `./scripts/bootstrap.sh` (shell hooks, native CLIs, and `brew bundle`). It will ask whether to clear pinned Dock apps and hide suggested/recent apps; default is no. Downloads and Trash stay. Open apps still appear while running.
 4. Sign in: `gh auth login && gh auth setup-git`, `origin auth login`, `pass-cli login`, `proton-drive auth login`
 5. Provision runtimes: `mise use -g ruby@latest && mise use -g node@lts && mise use -g bun@latest && corepack enable`
 6. Start services: `brew services start postgresql@16 && brew services start redis`
@@ -254,6 +255,9 @@ When you `cd` into a repo with `.mise.toml`, Mise activates the pinned versions 
 - **`command not found: origin` / `pass-cli` / `claude`**: Ensure `~/.local/bin` is on your PATH (`export PATH="$HOME/.local/bin:$PATH"`).
 - **`command not found: grok`**: Ensure `~/.grok/bin` is on your PATH. The Grok installer usually adds this itself.
 - **`agent` opens Grok instead of Cursor**: That is expected. Use `cursor-agent` for Cursor's terminal agent.
+- **Dock still full of default apps**: Re-run bootstrap and answer `y` at the Dock prompt, or run:
+  `defaults write com.apple.dock persistent-apps -array && defaults write com.apple.dock recent-apps -array && defaults write com.apple.dock show-recents -bool false && killall Dock`
+  That removes pinned app icons (left of the divider) and turns off suggested/recent apps. Open apps still show while running; Downloads and Trash stay.
 
 ---
 

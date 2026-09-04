@@ -183,6 +183,28 @@ fi
 echo ">> Installing Brewfile packages (idempotent)…"
 brew bundle --file="$REPO_ROOT/Brewfile"
 
+# Optional: strip default Dock *app* shortcuts (left of the divider) and hide recents.
+# persistent-apps = pinned apps; persistent-others = Downloads etc.; Trash is system-managed.
+# Running apps still appear while open and leave when quit. Finder stays.
+if [[ -t 0 ]]; then
+  echo
+  echo ">> New Macs pin Safari, Mail, Messages, and other apps on the left side of the Dock,"
+  echo ">> and may show suggested/recent apps even when they are not open."
+  read -r -p ">> Clear pinned Dock apps and hide recents? (keeps Downloads and Trash) [y/N] " dock_reply || dock_reply=""
+  case "$dock_reply" in
+    [yY]|[yY][eE][sS])
+      defaults write com.apple.dock persistent-apps -array
+      defaults write com.apple.dock recent-apps -array
+      defaults write com.apple.dock show-recents -bool false
+      killall Dock 2>/dev/null || true
+      echo ">> Dock app shortcuts cleared; suggested/recent apps hidden"
+      ;;
+    *)
+      echo ">> Leaving Dock as-is"
+      ;;
+  esac
+fi
+
 echo ">> Bootstrap complete."
 echo "   Start a new terminal (or run \`exec zsh\`), then:"
 echo "   1) gh auth login && gh auth setup-git"
