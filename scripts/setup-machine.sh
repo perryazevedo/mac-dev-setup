@@ -32,6 +32,7 @@ ALL_STEPS="ssh git path mise env"
 
 # Values read from machine.conf (defaults so `set -u` is happy if a key is missing)
 GIT_NAME=""
+GIT_EMAIL=""
 SSH_HOSTS=()
 GIT_FOLDER_EMAILS=()
 MISE_TOOLS=()
@@ -80,7 +81,7 @@ Usage: $(basename "$0") [--only STEP[,STEP...]] [--server] [--help]
 
 Steps (default: all, in this order): $ALL_STEPS
   ssh    ~/.ssh/id_ed25519 if absent, Host blocks in ~/.ssh/config, ssh-copy-id offer
-  git    user.name, per-folder commit emails via includeIf, gpgsign check
+  git    user.name, optional default user.email, per-folder commit emails via includeIf, gpgsign check
   path   ~/bin and mise shims ahead of /usr/bin in ~/.zprofile (path_helper-proof)
   mise   pin global tool versions from machine.conf
   env    $ENV_FILE (mode 600, names only) sourced from ~/.zshrc
@@ -115,9 +116,10 @@ create_conf() {
   say "No $CONF yet. Creating it now (mode 600; it is never committed)."
   say "Leave an answer blank to finish a list. Edit the file by hand later if you prefer."
   echo
-  local name hosts=() alias addr user emails=() folder email tools vars
+  local name gemail hosts=() alias addr user emails=() folder email tools vars
 
   read -r -p ">> Git user.name (shown on commits): " name || name=""
+  read -r -p ">> Default commit email (blank to leave global user.email unset): " gemail || gemail=""
 
   echo
   say "SSH hosts. Each one becomes a Host block in ~/.ssh/config."
@@ -131,8 +133,8 @@ create_conf() {
   done
 
   echo
-  say "Per-folder commit emails. Commits under a folder use that email; the"
-  say "global user.email stays unset so misattribution fails loudly instead."
+  say "Per-folder commit emails. Commits under a folder use that email and override"
+  say "the default above. With no default, a commit outside every folder fails loudly."
   while :; do
     read -r -p ">> Project folder (e.g. ~/Projects; blank to finish): " folder || folder=""
     [[ -n "$folder" ]] || break
@@ -159,6 +161,8 @@ create_conf() {
       echo "# Generated $(date '+%Y-%m-%d') by setup-machine.sh. Never commit this file."
       echo
       printf 'GIT_NAME="%s"\n' "$name"
+      echo "# Optional global default; GIT_FOLDER_EMAILS entries override it per folder."
+      printf 'GIT_EMAIL="%s"\n' "$gemail"
       echo
       echo "# alias:address:username — one Host block each in ~/.ssh/config"
       conf_array SSH_HOSTS ${hosts[@]+"${hosts[@]}"}
@@ -309,16 +313,27 @@ step_git() {
     say "Set global user.name to \"$GIT_NAME\""
   fi
 
-  if [[ -n "$(git config --global --get user.email || true)" ]]; then
-    say "Global user.email is set. This setup leaves it unset on purpose: with per-folder"
-    say "emails below, a commit outside any mapped folder then fails with 'Please tell me who"
-    say "you are' instead of being quietly attributed to the wrong address."
-    if ask_yn "Unset the global user.email?" y; then
+  local cur_email
+  cur_email="$(git config --global --get user.email || true)"
+  if [[ -n "$GIT_EMAIL" ]]; then
+    if [[ "$cur_email" == "$GIT_EMAIL" ]]; then
+      say "Global user.email already \"$GIT_EMAIL\" (default; per-folder entries override it)"
+    else
+      git config --global user.email "$GIT_EMAIL"
+      say "Set global user.email to \"$GIT_EMAIL\" (default; per-folder entries override it)"
+    fi
+  elif [[ -n "$cur_email" ]]; then
+    say "Global user.email is set but GIT_EMAIL is empty in machine.conf; leaving it as the"
+    say "default that per-folder entries override. Set GIT_EMAIL to manage it here, or unset"
+    say "it so a commit outside any mapped folder fails with 'Please tell me who you are'"
+    say "instead of being quietly attributed to the default."
+    if ask_yn "Unset the global user.email?" n; then
       git config --global --unset user.email
       say "Unset global user.email"
     fi
   else
-    say "Global user.email is unset (intended; per-folder includes supply it)"
+    say "Global user.email is unset: a commit outside any mapped folder fails loudly."
+    say "Set GIT_EMAIL in machine.conf if you want a default instead."
   fi
 
   if [[ ${#GIT_FOLDER_EMAILS[@]} -eq 0 ]]; then

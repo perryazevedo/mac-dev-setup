@@ -209,7 +209,7 @@ gh auth setup-git
 
 If you use 1Password’s SSH/GPG agent, follow 1Password docs and skip `gpg` key generation here. A `1password` / `1password-cli` pair is commented in the Brewfile.
 
-Copy `.gitconfig.sample` to `~/.gitconfig` if you are starting from scratch. `scripts/setup-machine.sh` then sets `user.name` and per-folder commit emails for you (see [Machine setup](#machine-setup)); with that model the global `user.email` stays unset on purpose.
+Copy `.gitconfig.sample` to `~/.gitconfig` if you are starting from scratch. `scripts/setup-machine.sh` then sets `user.name` and per-folder commit emails for you (see [Machine setup](#machine-setup)); with that model the global `user.email` is an optional default (`GIT_EMAIL`) that the per-folder entries override.
 
 `commit.gpgsign = true` is fine on a laptop. On a headless machine it makes every commit hang waiting for a passphrase unless the signing key has none; `setup-machine.sh` warns when it is on and, with `--server`, offers to turn it off.
 
@@ -236,7 +236,7 @@ Every step prints what it is about to do, skips what is already done, and is saf
 | Step | What it does | Touches |
 | --- | --- | --- |
 | `ssh` | Generates `~/.ssh/id_ed25519` if absent (comment you supply, never overwrites). Writes one `Host` block per entry in `SSH_HOSTS` (alias, `HostName`, `User`, `IdentityFile`, `IdentitiesOnly yes`), editing in place by alias so re-runs update instead of duplicate; blocks it did not write are left byte for byte. Offers `ssh-copy-id` per host and prints `ssh -G <alias>` for verification. | `~/.ssh/config` |
-| `git` | Sets `user.name` globally. Leaves global `user.email` unset (offers to unset it if set) and writes one `includeIf "gitdir:<folder>/"` per entry in `GIT_FOLDER_EMAILS`, each pointing at a small gitconfig under `~/.config/mac-dev-setup/git/` that sets that folder's `user.email`. Warns if `commit.gpgsign` is on. | `~/.gitconfig`, `~/.config/mac-dev-setup/git/*.gitconfig` |
+| `git` | Sets `user.name` globally and, if `GIT_EMAIL` is given, a global `user.email` as the default. Writes one `includeIf "gitdir:<folder>/"` per entry in `GIT_FOLDER_EMAILS`, each pointing at a small gitconfig under `~/.config/mac-dev-setup/git/` that sets that folder's `user.email`. Warns if `commit.gpgsign` is on. | `~/.gitconfig`, `~/.config/mac-dev-setup/git/*.gitconfig` |
 | `path` | Creates `~/bin` and puts it and mise's shims ahead of `/usr/bin` in `~/.zprofile`. | `~/.zprofile` |
 | `mise` | Pins every `tool@version` in `MISE_TOOLS` with `mise use -g`, so a new machine matches the others instead of drifting to latest. | `~/.config/mise/config.toml` |
 | `env` | Creates `~/.config/claude/env` (mode 600) with an empty `export NAME=` line per name in `ENV_VARS`, adds missing names on re-run without touching existing values, and sources it from `~/.zshrc`. | `~/.config/claude/env`, `~/.zshrc` |
@@ -244,7 +244,7 @@ Every step prints what it is about to do, skips what is already done, and is saf
 
 ### Why one SSH key but several commit emails
 
-One SSH key proves *who is pushing*; GitHub and the other forges accept it for every account it is added to. Commit *attribution* comes from the email in the commit, not the key. So a second key per employer buys nothing, while a wrong `user.email` quietly attributes work-repo commits to the wrong identity. The `includeIf "gitdir:…/"` blocks make the email follow the folder: everything under `~/Work/` gets the work address, everything under `~/Projects/` the personal one, and a commit anywhere else fails loudly with "Please tell me who you are" instead of guessing.
+One SSH key proves *who is pushing*; GitHub and the other forges accept it for every account it is added to. Commit *attribution* comes from the email in the commit, not the key. So a second key per employer buys nothing, while a wrong `user.email` quietly attributes work-repo commits to the wrong identity. The `includeIf "gitdir:…/"` blocks make the email follow the folder: everything under `~/Work/` gets the work address, everything under `~/Projects/` the personal one. Broad folders go first and specific projects after, since the last matching `includeIf` wins. A commit anywhere else uses `GIT_EMAIL` if you set one, or fails loudly with "Please tell me who you are" if you left it empty.
 
 ### Why PATH goes in `~/.zprofile`, not `~/.zshrc`
 
@@ -307,7 +307,7 @@ Order matters: bootstrap first (it installs `mise`, `gh`, `pass-cli`), sign-ins 
 
 - **`setup-machine.sh` says no machine.conf**: it only creates the file from a terminal. Run it interactively once, or copy `configs/machine.conf.example` to `~/.config/mac-dev-setup/machine.conf` and `chmod 600` it.
 - **Wrong Ruby/Python in a launchd job or `ssh host cmd`**: run `./scripts/setup-machine.sh --only path`, then open a new login shell. See "Why PATH goes in `~/.zprofile`".
-- **`git commit` says "Please tell me who you are"**: the folder is not in `GIT_FOLDER_EMAILS`. That is the per-folder email model working; add the folder to `machine.conf` and re-run `--only git`.
+- **`git commit` says "Please tell me who you are"**: the folder is not in `GIT_FOLDER_EMAILS`. That is the per-folder email model working; add the folder to `machine.conf` (or set `GIT_EMAIL` for a default) and re-run `--only git`.
 - **Ruby compile fails**: Ensure Brew deps (`openssl@3`, `readline`, `libyaml`, `zlib`, `gmp`) are installed. Re-run `mise use -g ruby@latest`.
 - **React Native Android Gradle errors**: Confirm JDK 17 is set in Android Studio (Preferences → Build Tools → Gradle).
 - **Docker performance**: Try **OrbStack** first; if you prefer FOSS, **Colima** is solid (`brew install colima`).
