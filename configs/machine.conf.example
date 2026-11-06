@@ -1,0 +1,44 @@
+# mac-dev-setup machine config — EXAMPLE. Placeholders only.
+#
+# Real file: ~/.config/mac-dev-setup/machine.conf, mode 600, never committed.
+# scripts/setup-machine.sh creates it interactively on first run, or copy this
+# file there and edit it:
+#   mkdir -p ~/.config/mac-dev-setup
+#   cp configs/machine.conf.example ~/.config/mac-dev-setup/machine.conf
+#   chmod 600 ~/.config/mac-dev-setup/machine.conf
+#
+# The file is sourced by bash. Keep it to quoted strings, one item per line.
+# $HOME is expanded. Nothing in here should ever be a secret VALUE; the env
+# section holds variable names only.
+
+# Shown on commits. Email is deliberately not global; see GIT_FOLDER_EMAILS.
+GIT_NAME="Your Name"
+
+# alias:address:username — one `Host` block each in ~/.ssh/config.
+# Pin the address on the router with a DHCP reservation so it stays put.
+SSH_HOSTS=(
+  "example-host:10.0.0.1:you"
+  "example-server:10.0.0.2:you"
+)
+
+# folder:email — commits under that folder use that email (includeIf gitdir).
+# One SSH key proves who you are; the email decides attribution per folder.
+GIT_FOLDER_EMAILS=(
+  "$HOME/Projects:you@example.com"
+  "$HOME/Work:you@work.example.com"
+)
+
+# tool@version — pinned with `mise use -g` so every machine matches instead
+# of drifting to whatever "latest" is the day it was set up.
+MISE_TOOLS=(
+  "node@lts"
+  "ruby@3.3.4"
+  "bun@latest"
+)
+
+# Variable NAMES written as empty `export NAME=` lines to ~/.config/claude/env.
+# Values are never written by the script; fill them from your password manager.
+ENV_VARS=(
+  "ANTHROPIC_API_KEY"
+  "OPENAI_API_KEY"
+)
