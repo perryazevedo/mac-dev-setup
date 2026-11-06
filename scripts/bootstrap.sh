@@ -238,6 +238,7 @@ echo "   5) claude / grok / codex  (browser login on first launch)"
 echo "   6) mise use -g ruby@latest"
 echo "   7) mise use -g node@lts && mise use -g bun@latest && corepack enable"
 echo "   8) brew services start postgresql@16 && brew services start redis"
+echo "   9) ./scripts/setup-machine.sh  (SSH hosts, git identity, PATH, mise pins, secrets env file)"
 echo "   Drift check later: ./scripts/doctor.sh"
 
 # React Native: Add Android tools to PATH

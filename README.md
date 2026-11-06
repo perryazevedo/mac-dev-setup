@@ -38,6 +38,10 @@ corepack enable   # pnpm/yarn shims
 # 4) Start services
 brew services start postgresql@16
 brew services start redis
+
+# 5) Per-machine config: SSH hosts, git identity, PATH, mise pins, secrets env file
+./scripts/setup-machine.sh
+# Asks for a machine-local config on first run (never committed). See "Machine setup".
 ```
 
 > Optional: Install **OrbStack** (via cask in `Brewfile`) and use it for Docker; or use **Colima** (installed via brew).
@@ -205,7 +209,58 @@ gh auth setup-git
 
 If you use 1Password’s SSH/GPG agent, follow 1Password docs and skip `gpg` key generation here. A `1password` / `1password-cli` pair is commented in the Brewfile.
 
-Copy `.gitconfig.sample` to `~/.gitconfig` and fill in your name/email if you are starting from scratch.
+Copy `.gitconfig.sample` to `~/.gitconfig` if you are starting from scratch. `scripts/setup-machine.sh` then sets `user.name` and per-folder commit emails for you (see [Machine setup](#machine-setup)); with that model the global `user.email` stays unset on purpose.
+
+`commit.gpgsign = true` is fine on a laptop. On a headless machine it makes every commit hang waiting for a passphrase unless the signing key has none; `setup-machine.sh` warns when it is on and, with `--server`, offers to turn it off.
+
+---
+
+## Machine setup
+
+`scripts/bootstrap.sh` installs the toolchain. `scripts/setup-machine.sh` does the per-machine layer that otherwise gets done by hand on every new Mac: SSH keys and host aliases, git identity with per-folder commit emails, PATH ordering that survives macOS `path_helper`, pinned mise global tools, and a mode-600 environment file for secrets.
+
+Everything machine-specific lives in **`~/.config/mac-dev-setup/machine.conf`** (mode 600, never committed). The repo ships only `configs/machine.conf.example` with placeholders. On first run the script creates the real file interactively; or copy the example there and edit it.
+
+```bash
+./scripts/setup-machine.sh              # all steps, in order
+./scripts/setup-machine.sh --only ssh   # one step: ssh | git | path | mise | env
+./scripts/setup-machine.sh --only git,path
+./scripts/setup-machine.sh --server     # also report agent-server settings (report only)
+./scripts/setup-machine.sh --help
+```
+
+Every step prints what it is about to do, skips what is already done, and is safe to re-run. Anything optional (`ssh-copy-id`, unsetting a global email, turning gpgsign off) is a yes/no prompt, and a non-interactive run (no TTY) answers no and says what it skipped. The script never prints a secret value, never writes one to a tracked file, and never changes a security setting.
+
+### What each step does
+
+| Step | What it does | Touches |
+| --- | --- | --- |
+| `ssh` | Generates `~/.ssh/id_ed25519` if absent (comment you supply, never overwrites). Writes one `Host` block per entry in `SSH_HOSTS` (alias, `HostName`, `User`, `IdentityFile`, `IdentitiesOnly yes`), editing in place by alias so re-runs update instead of duplicate; blocks it did not write are left byte for byte. Offers `ssh-copy-id` per host and prints `ssh -G <alias>` for verification. | `~/.ssh/config` |
+| `git` | Sets `user.name` globally. Leaves global `user.email` unset (offers to unset it if set) and writes one `includeIf "gitdir:<folder>/"` per entry in `GIT_FOLDER_EMAILS`, each pointing at a small gitconfig under `~/.config/mac-dev-setup/git/` that sets that folder's `user.email`. Warns if `commit.gpgsign` is on. | `~/.gitconfig`, `~/.config/mac-dev-setup/git/*.gitconfig` |
+| `path` | Creates `~/bin` and puts it and mise's shims ahead of `/usr/bin` in `~/.zprofile`. | `~/.zprofile` |
+| `mise` | Pins every `tool@version` in `MISE_TOOLS` with `mise use -g`, so a new machine matches the others instead of drifting to latest. | `~/.config/mise/config.toml` |
+| `env` | Creates `~/.config/claude/env` (mode 600) with an empty `export NAME=` line per name in `ENV_VARS`, adds missing names on re-run without touching existing values, and sources it from `~/.zshrc`. | `~/.config/claude/env`, `~/.zshrc` |
+| `--server` | Reports `pmset` sleep/autorestart, FileVault vs automatic login, and the application firewall, with what a 24/7 machine wants. Changes nothing. | nothing |
+
+### Why one SSH key but several commit emails
+
+One SSH key proves *who is pushing*; GitHub and the other forges accept it for every account it is added to. Commit *attribution* comes from the email in the commit, not the key. So a second key per employer buys nothing, while a wrong `user.email` quietly attributes work-repo commits to the wrong identity. The `includeIf "gitdir:…/"` blocks make the email follow the folder: everything under `~/Work/` gets the work address, everything under `~/Projects/` the personal one, and a commit anywhere else fails loudly with "Please tell me who you are" instead of guessing.
+
+### Why PATH goes in `~/.zprofile`, not `~/.zshrc`
+
+macOS runs `/usr/libexec/path_helper` from `/etc/zprofile` for every login shell, and it rebuilds `PATH` with `/usr/bin` first regardless of what was passed in. Non-interactive login shells (launchd jobs, `ssh host cmd`, cron) never read `~/.zshrc`, so a `PATH` set only there, or only in a launchd job's environment, loses and you silently get the system Ruby and Python instead of mise's. `~/.zprofile` runs after `path_helper`, so what it sets wins. This cost a day of debugging on the agent server; the comment in the block says so.
+
+### Secrets: `pass-cli` first, env file second
+
+`pass-cli` is already the secret-handling convention in this repo and is the preferred route whenever a command can be wrapped: `pass-cli run -- claude` injects secrets as environment variables for that process and nothing touches disk. The env file is for what cannot be wrapped (launchd agents, plain shells, tools that read the environment at login). It holds names only when written; you fill the values from Proton Pass, and the password manager remains the canonical copy. Both are documented so a machine can use either; the script reminds you of this and prints the `pass-cli run` form when `pass-cli` is installed.
+
+### By hand, afterwards
+
+- Fill `~/.config/claude/env` from your password manager (the script wrote names only).
+- Enable **Remote Login** on each host (System Settings → General → Sharing), then run `ssh-copy-id <alias>` from this machine, or answer yes when the script offers.
+- Give each host a **DHCP reservation** on the router so the address pinned in `machine.conf` stays pinned.
+- Open a new terminal so the `~/.zprofile` and `~/.zshrc` changes apply.
+- On an unattended machine, read the `--server` report and decide FileVault vs automatic login yourself.
 
 ---
 
@@ -232,20 +287,27 @@ When you `cd` into a repo with `.mise.toml`, Mise activates the pinned versions 
 
 ---
 
-## Reinstalling on another Mac
+## New machine in 20 minutes
 
-1. Install Xcode CLT: `xcode-select --install`
-2. Clone this repo.
-3. Run `./scripts/bootstrap.sh` (shell hooks, native CLIs, and `brew bundle`). It will ask whether to clear pinned Dock apps / hide recents (default yes), and whether to set Hot Corners: top-left Screen Saver, top-right Desktop, bottom-right Mission Control (default yes). Downloads and Trash stay. Open apps still appear while running.
-4. Sign in: `gh auth login && gh auth setup-git`, `origin auth login`, `pass-cli login`, `proton-drive auth login`
-5. Provision runtimes: `mise use -g ruby@latest && mise use -g node@lts && mise use -g bun@latest && corepack enable`
-6. Start services: `brew services start postgresql@16 && brew services start redis`
-7. Optional: `./scripts/doctor.sh` to confirm everything landed
+Order matters: bootstrap first (it installs `mise`, `gh`, `pass-cli`), sign-ins second, then the machine layer.
+
+1. `xcode-select --install`
+2. `git clone` this repo, `cd` into it.
+3. `./scripts/bootstrap.sh` — Homebrew, Brewfile, shell hooks, native CLIs. Answer the Dock and Hot Corners prompts (default yes). ~10 min, mostly downloads.
+4. New terminal (`exec zsh`).
+5. Sign in: `gh auth login && gh auth setup-git`, `origin auth login`, `pass-cli login`, `proton-drive auth login`.
+6. `./scripts/setup-machine.sh` — answer the `machine.conf` prompts (git name, hosts, folder emails, mise pins, env var names). It generates the SSH key, writes the host aliases, includeIf blocks, PATH block, pins mise tools, and creates the env file. Add `--server` on a machine that runs unattended.
+7. By hand: fill `~/.config/claude/env`, enable Remote Login on the hosts and `ssh-copy-id` them, add DHCP reservations on the router.
+8. New terminal again, then `./scripts/doctor.sh` and `./scripts/setup-machine.sh` once more: the second run should report everything already done.
+9. `brew services start postgresql@16 && brew services start redis` if this machine needs them.
 
 ---
 
 ## Troubleshooting
 
+- **`setup-machine.sh` says no machine.conf**: it only creates the file from a terminal. Run it interactively once, or copy `configs/machine.conf.example` to `~/.config/mac-dev-setup/machine.conf` and `chmod 600` it.
+- **Wrong Ruby/Python in a launchd job or `ssh host cmd`**: run `./scripts/setup-machine.sh --only path`, then open a new login shell. See "Why PATH goes in `~/.zprofile`".
+- **`git commit` says "Please tell me who you are"**: the folder is not in `GIT_FOLDER_EMAILS`. That is the per-folder email model working; add the folder to `machine.conf` and re-run `--only git`.
 - **Ruby compile fails**: Ensure Brew deps (`openssl@3`, `readline`, `libyaml`, `zlib`, `gmp`) are installed. Re-run `mise use -g ruby@latest`.
 - **React Native Android Gradle errors**: Confirm JDK 17 is set in Android Studio (Preferences → Build Tools → Gradle).
 - **Docker performance**: Try **OrbStack** first; if you prefer FOSS, **Colima** is solid (`brew install colima`).

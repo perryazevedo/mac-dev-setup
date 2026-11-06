@@ -22,3 +22,6 @@ tmp/
 # Misc
 .env*
 .envrc
+
+# Machine-local config (lives in ~/.config/mac-dev-setup/, never here)
+machine.conf
