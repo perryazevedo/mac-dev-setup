@@ -1,0 +1,15 @@
+# Client profile: what a travel / thin-client Mac needs to reach the agent hosts.
+# Used by `./scripts/setup-machine.sh --client` (brew bundle --no-upgrade).
+# Deliberately small: no toolchains, no datastores, no agent credentials.
+
+brew "tmux"             # sessions that survive a dropped connection
+brew "mosh"             # roaming shell for flaky hotel / hotspot links
+brew "gh"               # GitHub CLI (also in the main Brewfile)
+
+cask "obsidian"         # notes
+cask "slack"            # chat
+cask "claude"           # Claude desktop app (also in the main Brewfile)
+
+# Not installable with Homebrew, so listed as manual steps by the script:
+#   WireGuard client  Mac App Store only (no cask). The Homebrew `wireguard-tools`
+#                     formula is the CLI, not the app that imports Firewalla profiles.
