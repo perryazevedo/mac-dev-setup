@@ -217,17 +217,20 @@ Copy `.gitconfig.sample` to `~/.gitconfig` if you are starting from scratch. `sc
 
 ## Machine setup
 
-`scripts/bootstrap.sh` installs the toolchain. `scripts/setup-machine.sh` does the per-machine layer that otherwise gets done by hand on every new Mac: SSH keys and host aliases, git identity with per-folder commit emails, PATH ordering that survives macOS `path_helper`, pinned mise global tools, and a mode-600 environment file for secrets.
+`scripts/bootstrap.sh` installs the toolchain. `scripts/setup-machine.sh` does the per-machine layer that otherwise gets done by hand on every new Mac: SSH keys and host aliases, git identity with per-folder commit emails, PATH ordering that survives macOS `path_helper`, pinned mise global tools, and Claude Code deny rules. Two opt-in profiles add the rest: `--server` for the unattended agent host (a mode-600 environment file for secrets, plus a report) and `--client` for a travel laptop (tmux, mosh, gh, Obsidian, Slack, Claude, and a manual-steps list).
 
 Everything machine-specific lives in **`~/.config/mac-dev-setup/machine.conf`** (mode 600, never committed). The repo ships only `configs/machine.conf.example` with placeholders. On first run the script creates the real file interactively; or copy the example there and edit it.
 
 ```bash
-./scripts/setup-machine.sh              # all steps, in order
-./scripts/setup-machine.sh --only ssh   # one step: ssh | git | path | mise | env
+./scripts/setup-machine.sh              # the steps every machine gets: ssh git path mise claude
+./scripts/setup-machine.sh --server     # + the secrets env file, + agent-server report (report only)
+./scripts/setup-machine.sh --client     # + tmux, mosh, gh, Obsidian, Slack, Claude, + manual steps
+./scripts/setup-machine.sh --only ssh   # one step: ssh | git | path | mise | claude | env | client
 ./scripts/setup-machine.sh --only git,path
-./scripts/setup-machine.sh --server     # also report agent-server settings (report only)
 ./scripts/setup-machine.sh --help
 ```
+
+`--server` and `--client` are opposite profiles and cannot be combined: a client machine holds no agent credentials, so it never gets the env file.
 
 Every step prints what it is about to do, skips what is already done, and is safe to re-run. Anything optional (`ssh-copy-id`, unsetting a global email, turning gpgsign off) is a yes/no prompt, and a non-interactive run (no TTY) answers no and says what it skipped. The script never prints a secret value, never writes one to a tracked file, and never changes a security setting.
 
@@ -239,8 +242,48 @@ Every step prints what it is about to do, skips what is already done, and is saf
 | `git` | Sets `user.name` globally and, if `GIT_EMAIL` is given, a global `user.email` as the default. Writes one `includeIf "gitdir:<folder>/"` per entry in `GIT_FOLDER_EMAILS`, each pointing at a small gitconfig under `~/.config/mac-dev-setup/git/` that sets that folder's `user.email`. Warns if `commit.gpgsign` is on. | `~/.gitconfig`, `~/.config/mac-dev-setup/git/*.gitconfig` |
 | `path` | Creates `~/bin` and puts it and mise's shims ahead of `/usr/bin` in `~/.zprofile`. | `~/.zprofile` |
 | `mise` | Pins every `tool@version` in `MISE_TOOLS` with `mise use -g`, so a new machine matches the others instead of drifting to latest. | `~/.config/mise/config.toml` |
-| `env` | Creates `~/.config/claude/env` (mode 600) with an empty `export NAME=` line per name in `ENV_VARS`, adds missing names on re-run without touching existing values, and sources it from `~/.zshrc`. | `~/.config/claude/env`, `~/.zshrc` |
+| `claude` | Merges `claude/deny-rules.json` into `~/.claude/settings.json` and sets `inputNeededNotifEnabled` to `true`. See "Claude Code deny rules" below. Needs `jq`. | `~/.claude/settings.json` (a timestamped `.bak-*` copy is kept whenever it changes) |
+| `env` | **`--server` only.** Creates `~/.config/claude/env` (mode 600) with an empty `export NAME=` line per name in `ENV_VARS`, adds missing names on re-run without touching existing values, and sources it from `~/.zshrc`. Without `--server` it prints that it skipped. | `~/.config/claude/env`, `~/.zshrc` |
+| `client` | **`--client` only.** `brew bundle --no-upgrade` on `configs/Brewfile.client`, then prints the manual steps Homebrew cannot do. See "Client profile". | Homebrew |
 | `--server` | Reports `pmset` sleep/autorestart, FileVault vs automatic login, and the application firewall, with what a 24/7 machine wants. Changes nothing. | nothing |
+
+### Claude Code deny rules
+
+`claude/deny-rules.json` is the `permissions.deny` block from the agent server's `~/.claude/settings.json`, and nothing else from that file. It keeps an agent away from credential files (`~/.ssh`, `~/.config/claude/env`, and similar), from process listing (`ps`, `pgrep`, `top`, `lsof`, `launchctl procinfo`), and from shell tracing (`bash -x`, `set -x`), in the bare form and in the usual wrappers (`sudo`, `env`, `xargs`, `sh -c`, …).
+
+The `claude` step **unions** those rules into the machine's own: rules already in the file stay where they are, missing ones are appended, and every other key (`allow`, `hooks`, `env`, plugins, model, …) is carried through unchanged. It refuses, and changes nothing, if `settings.json` is not valid JSON or `permissions.deny` is not a list. The script also refuses to apply a fragment that has anything but `permissions.deny` in it or anything shaped like a credential, because this file is public.
+
+Because the rules are broad, on a machine where you use Claude Code they also stop Claude from running any command that mentions `~/.ssh` or `~/.config/claude`. That is the point on an agent host; on a laptop you drive by hand, review the list once.
+
+To refresh the fragment from the server (without printing the rest of its settings):
+
+```bash
+scp <agent-host>:.claude/settings.json "$TMPDIR/server-settings.json"
+jq '{permissions:{deny:.permissions.deny}}' "$TMPDIR/server-settings.json" > claude/deny-rules.json
+rm "$TMPDIR/server-settings.json"
+git diff claude/deny-rules.json    # read every added line before committing
+```
+
+### Client profile
+
+`./scripts/setup-machine.sh --client` is for the laptop you travel with. Homebrew installs what it can (`configs/Brewfile.client`): **tmux**, **mosh**, **gh**, **Obsidian**, **Slack**, and the **Claude** desktop app. It uses `--no-upgrade`, so a re-run installs only what is missing and never upgrades anything. Then it lists what only you can do:
+
+- **WireGuard client**: Mac App Store only (there is no Homebrew cask; the `wireguard-tools` formula is the CLI, not the app that imports Firewalla profiles). Install it, import the profile from the Firewalla app, and test it from a phone hotspot.
+- Sign in to Slack, Obsidian and Claude once, and point Obsidian at the vault.
+- `mosh` needs `mosh-server` on each host and UDP 60000–61000 reachable over the VPN. If mosh reports `mosh-server: command not found`, the host's non-login PATH lacks Homebrew; pass `--server=/opt/homebrew/bin/mosh-server`.
+
+If a client has an old `~/.config/claude/env`, the step warns about it and leaves it alone.
+
+### Travel-readiness checklist
+
+Do this on the client, at home, the day before you leave. Every box must be ticked on the network you will actually travel on (a phone hotspot), not on home Wi-Fi.
+
+- [ ] **WireGuard profile imported from the Firewalla app and tested from a phone hotspot.** Turn Wi-Fi off on the laptop, join the phone's hotspot, bring the tunnel up. If it connects only on home Wi-Fi it proves nothing.
+- [ ] **`ssh` to each host works over the tunnel.** One command per alias in `machine.conf` (two is the documented shape): `ssh -o ConnectTimeout=5 <alias> true && echo ok`. It must not ask for a password; if it does, run `ssh-copy-id <alias>` while still at home.
+- [ ] **The agent-server session is visible in the Claude app.** Open the Claude app on the laptop and on the phone and confirm the server's session is listed and answers.
+- [ ] **The status page loads over the VPN, with its token from the password manager.** Open it through the tunnel and paste the token from the password manager. The token is never in this repo, `machine.conf`, or the env file.
+
+If a box will not tick, fix it now. Things to check first: that the WireGuard profile on the client is the one the Firewalla app currently shows, that the host still has the address pinned in `machine.conf` (the DHCP reservation), and that Remote Login is still on.
 
 ### Why one SSH key but several commit emails
 
@@ -256,7 +299,7 @@ macOS runs `/usr/libexec/path_helper` from `/etc/zprofile` for every login shell
 
 ### By hand, afterwards
 
-- Fill `~/.config/claude/env` from your password manager (the script wrote names only).
+- On a `--server` machine, fill `~/.config/claude/env` from your password manager (the script wrote names only). A client has no env file.
 - Enable **Remote Login** on each host (System Settings → General → Sharing), then run `ssh-copy-id <alias>` from this machine, or answer yes when the script offers.
 - Give each host a **DHCP reservation** on the router so the address pinned in `machine.conf` stays pinned.
 - Open a new terminal so the `~/.zprofile` and `~/.zshrc` changes apply.
@@ -296,9 +339,9 @@ Order matters: bootstrap first (it installs `mise`, `gh`, `pass-cli`), sign-ins 
 3. `./scripts/bootstrap.sh` — Homebrew, Brewfile, shell hooks, native CLIs. Answer the Dock and Hot Corners prompts (default yes). ~10 min, mostly downloads.
 4. New terminal (`exec zsh`).
 5. Sign in: `gh auth login && gh auth setup-git`, `origin auth login`, `pass-cli login`, `proton-drive auth login`.
-6. `./scripts/setup-machine.sh` — answer the `machine.conf` prompts (git name, hosts, folder emails, mise pins, env var names). It generates the SSH key, writes the host aliases, includeIf blocks, PATH block, pins mise tools, and creates the env file. Add `--server` on a machine that runs unattended.
-7. By hand: fill `~/.config/claude/env`, enable Remote Login on the hosts and `ssh-copy-id` them, add DHCP reservations on the router.
-8. New terminal again, then `./scripts/doctor.sh` and `./scripts/setup-machine.sh` once more: the second run should report everything already done.
+6. `./scripts/setup-machine.sh` — answer the `machine.conf` prompts (git name, hosts, folder emails, mise pins, env var names). It generates the SSH key, writes the host aliases, includeIf blocks, PATH block, pins mise tools, and merges the Claude Code deny rules. Add `--server` on a machine that runs unattended (also creates the env file) or `--client` on a travel laptop (installs the client apps).
+7. By hand: on a server, fill `~/.config/claude/env`; enable Remote Login on the hosts and `ssh-copy-id` them, add DHCP reservations on the router. On a client, finish the manual steps the script printed and tick the travel-readiness checklist.
+8. New terminal again, then `./scripts/doctor.sh` and the same `./scripts/setup-machine.sh` command once more: the second run should report everything already done.
 9. `brew services start postgresql@16 && brew services start redis` if this machine needs them.
 
 ---
@@ -306,6 +349,8 @@ Order matters: bootstrap first (it installs `mise`, `gh`, `pass-cli`), sign-ins 
 ## Troubleshooting
 
 - **`setup-machine.sh` says no machine.conf**: it only creates the file from a terminal. Run it interactively once, or copy `configs/machine.conf.example` to `~/.config/mac-dev-setup/machine.conf` and `chmod 600` it.
+- **`claude -p` (or a script that calls it) says "Invalid API key" though you are logged in**: an exported `ANTHROPIC_API_KEY`, for example from `~/.config/claude/env`, takes precedence over the login. Run it as `env -u ANTHROPIC_API_KEY claude -p …`, or remove the variable from the shell. A client machine should not export it at all.
+- **`setup-machine.sh` says the `claude` step stopped**: `~/.claude/settings.json` is not valid JSON, or `permissions.deny` is not a list. The script changed nothing; fix the file by hand and re-run `--only claude`. Every change it does make leaves a `settings.json.bak-<timestamp>` beside it.
 - **Wrong Ruby/Python in a launchd job or `ssh host cmd`**: run `./scripts/setup-machine.sh --only path`, then open a new login shell. See "Why PATH goes in `~/.zprofile`".
 - **`git commit` says "Please tell me who you are"**: the folder is not in `GIT_FOLDER_EMAILS`. That is the per-folder email model working; add the folder to `machine.conf` (or set `GIT_EMAIL` for a default) and re-run `--only git`.
 - **Ruby compile fails**: Ensure Brew deps (`openssl@3`, `readline`, `libyaml`, `zlib`, `gmp`) are installed. Re-run `mise use -g ruby@latest`.

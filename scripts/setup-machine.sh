@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Per-machine configuration that bootstrap.sh does not do: SSH keys and host
 # aliases, git identity with per-folder commit emails, PATH ordering that
-# survives macOS path_helper, pinned mise global tools, and a mode-600 env
-# file for secrets. Everything machine-specific comes from
-# ~/.config/mac-dev-setup/machine.conf, which is never committed. See
-# configs/machine.conf.example for the shape.
+# survives macOS path_helper, pinned mise global tools, Claude Code deny rules,
+# and (server only) a mode-600 env file for secrets. Everything
+# machine-specific comes from ~/.config/mac-dev-setup/machine.conf, which is
+# never committed. See configs/machine.conf.example for the shape.
 #
 # Every step prints what it will do, is idempotent, and can be run on its own:
-#   ./scripts/setup-machine.sh                 # all steps
-#   ./scripts/setup-machine.sh --only ssh      # one step (ssh git path mise env)
-#   ./scripts/setup-machine.sh --server        # also report agent-server settings
+#   ./scripts/setup-machine.sh                 # all steps common to every machine
+#   ./scripts/setup-machine.sh --only ssh      # one step (ssh git path mise claude env)
+#   ./scripts/setup-machine.sh --server        # unattended agent host: also the env file + report
+#   ./scripts/setup-machine.sh --client        # travel / thin client: also the client apps
 #
 # Works with the macOS /bin/bash (3.2): no associative arrays, no mapfile.
 set -euo pipefail
@@ -19,6 +20,9 @@ CONF_DIR="$HOME/.config/mac-dev-setup"
 CONF="$CONF_DIR/machine.conf"
 CONF_EXAMPLE="$REPO_ROOT/configs/machine.conf.example"
 GIT_INCLUDE_DIR="$CONF_DIR/git"
+CLAUDE_SETTINGS="$HOME/.claude/settings.json"
+DENY_FRAGMENT="$REPO_ROOT/claude/deny-rules.json"
+CLIENT_BREWFILE="$REPO_ROOT/configs/Brewfile.client"
 ENV_FILE="$HOME/.config/claude/env"
 SSH_DIR="$HOME/.ssh"
 SSH_KEY="$SSH_DIR/id_ed25519"
@@ -28,7 +32,9 @@ ZSHRC="$HOME/.zshrc"
 MISE_GLOBAL_CONFIG="$HOME/.config/mise/config.toml"
 MISE_SHIMS="$HOME/.local/share/mise/shims"
 
-ALL_STEPS="ssh git path mise env"
+# Steps in run order. `env` is server-only and `client` is client-only: both are
+# listed here so --only accepts them, and each one checks its own profile flag.
+ALL_STEPS="ssh git path mise claude env client"
 
 # Values read from machine.conf (defaults so `set -u` is happy if a key is missing)
 GIT_NAME=""
@@ -77,19 +83,27 @@ write_if_changed() {
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [--only STEP[,STEP...]] [--server] [--help]
+Usage: $(basename "$0") [--only STEP[,STEP...]] [--server | --client] [--help]
 
-Steps (default: all, in this order): $ALL_STEPS
-  ssh    ~/.ssh/id_ed25519 if absent, Host blocks in ~/.ssh/config, ssh-copy-id offer
-  git    user.name, optional default user.email, per-folder commit emails via includeIf, gpgsign check
-  path   ~/bin and mise shims ahead of /usr/bin in ~/.zprofile (path_helper-proof)
-  mise   pin global tool versions from machine.conf
-  env    $ENV_FILE (mode 600, names only) sourced from ~/.zshrc
+Steps, in this order:
+  ssh     ~/.ssh/id_ed25519 if absent, Host blocks in ~/.ssh/config, ssh-copy-id offer
+  git     user.name, optional default user.email, per-folder commit emails via
+          includeIf, gpgsign check
+  path    ~/bin and mise shims ahead of /usr/bin in ~/.zprofile (path_helper-proof)
+  mise    pin global tool versions from machine.conf
+  claude  merge claude/deny-rules.json into ~/.claude/settings.json (other keys untouched)
+          and set inputNeededNotifEnabled
+  env     --server only: $ENV_FILE (mode 600, names only) sourced from ~/.zshrc
+  client  --client only: tmux, mosh, gh and the client apps (configs/Brewfile.client),
+          then the manual steps Homebrew cannot do
 
 Flags:
   --only STEP   run only this step; repeat or comma-separate for several
-  --server      additionally report sleep, FileVault/auto-login and firewall
-                state for a machine that runs unattended (report only)
+  --server      this machine runs unattended agents: enables the env step and
+                reports sleep, FileVault/auto-login and firewall state (report only)
+  --client      this machine is a travel / thin client: enables the client step.
+                A client holds no agent credentials, so it never gets the env file.
+                Cannot be combined with --server.
   --help        this text
 
 Config: $CONF (mode 600, never committed).
@@ -147,8 +161,9 @@ create_conf() {
   read -r -p ">> Tools, space separated (blank for none): " tools || tools=""
 
   echo
-  say "Secret environment variable NAMES for $ENV_FILE. Names only; you fill the"
-  say "values from your password manager afterwards."
+  say "Secret environment variable NAMES for $ENV_FILE. Only used on a --server machine"
+  say "(a client holds no agent credentials). Names only; you fill the values from your"
+  say "password manager afterwards."
   read -r -p ">> Variable names, space separated (blank for none): " vars || vars=""
 
   mkdir -p "$CONF_DIR"
@@ -451,11 +466,99 @@ step_mise() {
 }
 
 # ---------------------------------------------------------------------------
-# 5. Secrets env file
+# 5. Claude Code settings
+# ---------------------------------------------------------------------------
+
+# Shapes that look like credentials. The deny-rules fragment is public, so a
+# match refuses to apply it rather than copy a secret into ~/.claude.
+SECRET_SHAPES='(sk-[A-Za-z0-9_-]{16,}|ghp_|gho_|github_pat_|xox[bap]-|AKIA[0-9A-Z]{12,}|AIza[0-9A-Za-z_-]{20,}|eyJ[A-Za-z0-9_-]{15,}|-----BEGIN|bearer [A-Za-z0-9._-]{12,}|(token|secret|password|passwd|apikey|api_key)["'"'"' ]*[:=]["'"'"' ]*[A-Za-z0-9_-]{12,})'
+
+# The fragment must be exactly {"permissions":{"deny":[<strings>]}}: nothing else
+# from a settings file (hooks, env, plugins, tokens) may ride along.
+validate_deny_fragment() {
+  [[ -f "$DENY_FRAGMENT" ]] || die "missing $DENY_FRAGMENT (is this a full checkout of the repo?)"
+  jq -e '(keys == ["permissions"]) and (.permissions | keys == ["deny"])
+         and (.permissions.deny | type == "array" and length > 0 and all(type == "string"))' \
+    "$DENY_FRAGMENT" >/dev/null 2>&1 \
+    || die "$DENY_FRAGMENT must contain only {\"permissions\":{\"deny\":[...strings...]}}"
+  if grep -qEi -e "$SECRET_SHAPES" "$DENY_FRAGMENT"; then
+    die "$DENY_FRAGMENT contains something shaped like a credential; refusing to apply it"
+  fi
+}
+
+step_claude() {
+  header "Claude Code settings (deny rules, input-needed notifications)"
+  if ! has_cmd jq; then
+    say "jq not found; run ./scripts/bootstrap.sh first (it installs jq)"
+    return 0
+  fi
+  validate_deny_fragment
+
+  mkdir -p "$(dirname "$CLAUDE_SETTINGS")"
+  if [[ ! -f "$CLAUDE_SETTINGS" ]]; then
+    say "No $CLAUDE_SETTINGS yet; starting from {}"
+    (umask 077; echo '{}' > "$CLAUDE_SETTINGS")
+  fi
+
+  # Refuse to touch a file we cannot parse or whose permissions block has an
+  # unexpected shape: overwriting someone's hand-edited settings is worse than stopping.
+  jq -e 'type == "object" and ((.permissions // {}) | type == "object")
+         and (((.permissions // {}).deny // []) | type == "array")' "$CLAUDE_SETTINGS" >/dev/null 2>&1 \
+    || die "$CLAUDE_SETTINGS is not valid JSON, or permissions/permissions.deny has an unexpected type. Fix it by hand; nothing was changed."
+
+  # Union, never replace: the machine's own deny rules stay, in their order; fragment
+  # rules not already present are appended. Other keys, including other keys under
+  # permissions (allow, ask, defaultMode), are carried through as they are.
+  local merged
+  merged="$(mktemp)"
+  jq --slurpfile frag "$DENY_FRAGMENT" '
+      (.permissions.deny // []) as $have
+      | .permissions.deny = ($have + ($frag[0].permissions.deny
+                                       | map(select(. as $r | $have | any(. == $r) | not))))
+      | .inputNeededNotifEnabled = true' "$CLAUDE_SETTINGS" > "$merged"
+
+  # Self-check before writing: with the two managed paths removed, the file must be
+  # semantically identical to what is on disk now.
+  local untouched='delpaths([["permissions","deny"],["inputNeededNotifEnabled"]])
+                   | if .permissions == {} then del(.permissions) else . end'
+  if [[ "$(jq -S "$untouched" "$CLAUDE_SETTINGS")" != "$(jq -S "$untouched" "$merged")" ]]; then
+    rm -f "$merged"
+    die "internal check failed: merge would change keys other than permissions.deny and inputNeededNotifEnabled. Nothing was changed."
+  fi
+
+  local total have_before added
+  total="$(jq '.permissions.deny | length' "$DENY_FRAGMENT")"
+  have_before="$(jq '(.permissions.deny // []) | length' "$CLAUDE_SETTINGS")"
+  added="$(( $(jq '.permissions.deny | length' "$merged") - have_before ))"
+
+  if [[ "$(jq -S . "$CLAUDE_SETTINGS")" == "$(jq -S . "$merged")" ]]; then
+    say "$CLAUDE_SETTINGS already up to date ($total deny rules present, inputNeededNotifEnabled true)"
+  else
+    local backup mode
+    backup="$CLAUDE_SETTINGS.bak-$(date +%Y%m%d-%H%M%S)"
+    cp -p "$CLAUDE_SETTINGS" "$backup"
+    mode="$(stat -f '%Lp' "$CLAUDE_SETTINGS")"
+    cat "$merged" > "$CLAUDE_SETTINGS"
+    chmod "$mode" "$CLAUDE_SETTINGS"
+    say "Updated $CLAUDE_SETTINGS: added $added of $total fragment deny rules ($((total - added)) already present)"
+    say "inputNeededNotifEnabled → true. Every other key left as it was. Previous file kept at:"
+    say "   $backup"
+  fi
+  rm -f "$merged"
+  say "Deny rules apply to new Claude Code sessions; a session already open picks them up on its next settings reload."
+}
+
+# ---------------------------------------------------------------------------
+# 6. Secrets env file (server only)
 # ---------------------------------------------------------------------------
 
 step_env() {
   header "Secrets environment file"
+  if [[ "$SERVER" -ne 1 ]]; then
+    say "Skipped: the env file is server-only (re-run with --server on the agent host)."
+    say "A client machine holds no agent credentials."
+    return 0
+  fi
   local dir var added=0
   dir="$(dirname "$ENV_FILE")"
   mkdir -p "$dir"
@@ -518,7 +621,57 @@ step_env() {
 }
 
 # ---------------------------------------------------------------------------
-# 6. --server report (never changes anything)
+# 7. Client profile (--client): what a travel / thin client needs
+# ---------------------------------------------------------------------------
+
+step_client() {
+  header "Client profile (tmux, mosh, gh, WireGuard, Obsidian, Slack, Claude)"
+  if [[ "$CLIENT" -ne 1 ]]; then
+    say "Skipped: the client profile is opt-in (re-run with --client on a travel / thin-client machine)."
+    return 0
+  fi
+
+  local brew_bin cand
+  brew_bin="$(command -v brew || true)"
+  if [[ -z "$brew_bin" ]]; then
+    for cand in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+      if [[ -x "$cand" ]]; then brew_bin="$cand"; break; fi
+    done
+  fi
+  if [[ -z "$brew_bin" ]]; then
+    say "Homebrew not found; run ./scripts/bootstrap.sh first. Nothing installed."
+  elif [[ ! -f "$CLIENT_BREWFILE" ]]; then
+    die "missing $CLIENT_BREWFILE (is this a full checkout of the repo?)"
+  elif "$brew_bin" bundle check --file "$CLIENT_BREWFILE" --no-upgrade >/dev/null 2>&1; then
+    say "Everything in configs/Brewfile.client is already installed"
+  else
+    say "Missing from configs/Brewfile.client:"
+    "$brew_bin" bundle check --file "$CLIENT_BREWFILE" --no-upgrade --verbose 2>&1 | grep -v '^The Brewfile' | sed 's/^/      /' || true
+    say "Installing (brew bundle --no-upgrade: installs what is missing, never upgrades what is there)"
+    "$brew_bin" bundle install --file "$CLIENT_BREWFILE" --no-upgrade \
+      || say "brew bundle reported failures (see above); fix them and re-run with --only client"
+  fi
+
+  if [[ -f "$ENV_FILE" ]]; then
+    echo
+    say "Found $ENV_FILE on a client. A client should hold no agent credentials; the password"
+    say "manager (and this machine's own logins) are enough. Review it and delete it if it holds any."
+  fi
+
+  echo
+  say "Manual steps (Homebrew cannot do these):"
+  say "   1) WireGuard: install from the Mac App Store (the official client has no Homebrew cask),"
+  say "      then import the profile exported from the Firewalla app and test it from a phone"
+  say "      hotspot, not home Wi-Fi."
+  say "   2) Slack, Obsidian, Claude: open each once and sign in; point Obsidian at the vault."
+  say "   3) mosh needs mosh-server on each host and UDP 60000-61000 reachable over the VPN."
+  say "      Over a non-login ssh the host's PATH may lack Homebrew; if mosh says 'command not"
+  say "      found', pass --server=/opt/homebrew/bin/mosh-server."
+  say "   4) Walk the travel-readiness checklist in the README before you leave."
+}
+
+# ---------------------------------------------------------------------------
+# 8. --server report (never changes anything)
 # ---------------------------------------------------------------------------
 
 step_server() {
@@ -573,6 +726,7 @@ step_server() {
 # ---------------------------------------------------------------------------
 
 SERVER=0
+CLIENT=0
 ONLY=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -586,6 +740,7 @@ while [[ $# -gt 0 ]]; do
       ONLY="${ONLY//,/ }"
       ;;
     --server) SERVER=1 ;;
+    --client) CLIENT=1 ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; die "unknown argument: $1" ;;
   esac
@@ -597,16 +752,25 @@ if [[ -n "$ONLY" ]]; then
   STEPS=""
   for s in $ONLY; do
     case "$s" in
-      ssh|git|path|mise|env) STEPS="$STEPS $s" ;;
+      ssh|git|path|mise|claude|env) STEPS="$STEPS $s" ;;
+      client) STEPS="$STEPS $s"; CLIENT=1 ;;
       server) SERVER=1 ;;
       *) die "unknown step '$s' (want one of: $ALL_STEPS server)" ;;
     esac
   done
 fi
 
+if [[ "$SERVER" -eq 1 && "$CLIENT" -eq 1 ]]; then
+  die "--server and --client are opposite profiles (a client holds no agent credentials); pick one."
+fi
+
 echo "== mac-dev-setup machine setup =="
 load_conf
 say "Using $CONF"
+if [[ "$SERVER" -eq 1 ]]; then say "Profile: server"
+elif [[ "$CLIENT" -eq 1 ]]; then say "Profile: client"
+else say "Profile: common steps only (add --server or --client for the profile-specific steps)"
+fi
 
 for s in $STEPS; do
   "step_$s"
@@ -616,9 +780,15 @@ done
 echo
 say "Machine setup complete."
 if [[ -z "$ONLY" ]]; then
+  n=1
   echo "   By hand, afterwards:"
-  echo "   1) Fill $ENV_FILE from your password manager (names only were written)"
-  echo "   2) Enable Remote Login on each host (System Settings → General → Sharing), then ssh-copy-id <alias>"
-  echo "   3) Give each host a DHCP reservation on the router so its pinned address stays pinned"
-  echo "   4) Open a new terminal so ~/.zprofile and ~/.zshrc changes apply"
+  if [[ "$SERVER" -eq 1 ]]; then
+    echo "   $n) Fill $ENV_FILE from your password manager (names only were written)"; n=$((n+1))
+  fi
+  echo "   $n) Enable Remote Login on each host (System Settings → General → Sharing), then ssh-copy-id <alias>"; n=$((n+1))
+  echo "   $n) Give each host a DHCP reservation on the router so its pinned address stays pinned"; n=$((n+1))
+  echo "   $n) Open a new terminal so ~/.zprofile and ~/.zshrc changes apply"; n=$((n+1))
+  if [[ "$CLIENT" -eq 1 ]]; then
+    echo "   $n) Walk the travel-readiness checklist in the README"
+  fi
 fi

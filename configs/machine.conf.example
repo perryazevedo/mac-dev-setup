@@ -20,10 +20,13 @@ GIT_NAME="Your Name"
 GIT_EMAIL="you@example.com"
 
 # alias:address:username — one `Host` block each in ~/.ssh/config.
-# Pin the address on the router with a DHCP reservation so it stays put.
+# Two hosts is the documented shape: the always-on machine that runs the agents,
+# and one more Mac you also reach (a second workstation, or a spare server).
+# Add or remove lines freely; the script handles any number.
+# Pin each address on the router with a DHCP reservation so it stays put.
 SSH_HOSTS=(
-  "example-host:10.0.0.1:you"
-  "example-server:10.0.0.2:you"
+  "example-server:10.0.0.1:you"        # always-on agent host (run with --server)
+  "example-workstation:10.0.0.2:you"   # the second Mac
 )
 
 # folder:email — commits under that folder use that email (includeIf gitdir).
@@ -43,6 +46,8 @@ MISE_TOOLS=(
 )
 
 # Variable NAMES written as empty `export NAME=` lines to ~/.config/claude/env.
+# Used only when you run the script with --server: a client machine (--client)
+# holds no agent credentials, so the env step is skipped there.
 # Values are never written by the script; fill them from your password manager.
 ENV_VARS=(
   "ANTHROPIC_API_KEY"
