@@ -11,8 +11,13 @@
 # $HOME is expanded. Nothing in here should ever be a secret VALUE; the env
 # section holds variable names only.
 
-# Shown on commits. Email is deliberately not global; see GIT_FOLDER_EMAILS.
+# Shown on commits.
 GIT_NAME="Your Name"
+
+# Optional global default email. GIT_FOLDER_EMAILS entries override it per
+# folder. Leave it empty to make a commit outside every mapped folder fail
+# with "Please tell me who you are" instead of using a default.
+GIT_EMAIL="you@example.com"
 
 # alias:address:username — one `Host` block each in ~/.ssh/config.
 # Two hosts is the documented shape: the always-on machine that runs the agents,
@@ -26,6 +31,7 @@ SSH_HOSTS=(
 
 # folder:email — commits under that folder use that email (includeIf gitdir).
 # One SSH key proves who you are; the email decides attribution per folder.
+# Broad folders first, specific projects after: the last matching entry wins.
 GIT_FOLDER_EMAILS=(
   "$HOME/Projects:you@example.com"
   "$HOME/Work:you@work.example.com"
